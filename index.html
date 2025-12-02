@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Webcam ASCII Mobile</title>
+    <title>Webcam ASCII Mirror</title>
     <style>
         body {
             margin: 0;
@@ -14,27 +14,24 @@
             align-items: center;
             color: #0f0;
             font-family: 'Courier New', Courier, monospace;
-            height: 100vh; /* Fix para móviles */
+            height: 100vh;
         }
         
         /* Capa de UI */
         #ui-layer {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0; width: 100%; height: 100%;
             z-index: 20;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            justify-content: flex-start;
             align-items: center;
-            pointer-events: none; /* Dejar pasar clicks salvo en botones */
+            pointer-events: none;
         }
 
-        /* Pantalla de Inicio (Overlay) */
+        /* Pantalla de Inicio / Errores */
         #start-screen {
-            background: rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.95);
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
             display: flex;
@@ -42,40 +39,48 @@
             justify-content: center;
             align-items: center;
             z-index: 50;
-            pointer-events: auto; /* Habilitar clicks aquí */
+            pointer-events: auto;
             text-align: center;
             padding: 20px;
             box-sizing: border-box;
         }
 
+        h1 { margin: 0 0 10px 0; font-size: 1.5rem; letter-spacing: 3px; }
+        
         button {
             background: transparent;
             border: 2px solid #0f0;
             color: #0f0;
             padding: 15px 30px;
             font-family: inherit;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: bold;
             cursor: pointer;
             margin-top: 20px;
             text-transform: uppercase;
-            transition: all 0.3s;
+        }
+        button:hover { background: #0f0; color: #000; }
+        button:disabled { border-color: #555; color: #555; pointer-events: none; }
+
+        #error-msg {
+            color: #ff5555;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            max-width: 90%;
+            background: rgba(50,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            display: none; /* Se muestra solo si hay error */
         }
 
-        button:hover { background: #0f0; color: #000; }
-        button:active { transform: scale(0.95); }
-
-        /* Información de estado pequeña */
         #status-bar {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            margin-top: 20px;
             background: rgba(0,0,0,0.6);
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 8px 15px;
+            border-radius: 20px;
             font-size: 0.8rem;
-            white-space: nowrap;
+            border: 1px solid #333;
         }
 
         #videoSource { display: none; }
@@ -84,14 +89,19 @@
 <body>
 
     <div id="start-screen">
-        <h1 style="margin-bottom: 10px;">ASCII MIRROR</h1>
-        <p style="color: #ccc; font-size: 0.9rem;">Requiere acceso a cámara</p>
-        <button id="btn-start">INICIAR EXPERIENCIA</button>
-        <p id="error-msg" style="color: red; margin-top: 15px; font-size: 0.8rem;"></p>
+        <h1>ASCII MIRROR</h1>
+        <p style="color: #888; margin: 0;">TouchDesigner Web Port</p>
+        
+        <button id="btn-start">ACTIVAR CÁMARA</button>
+        
+        <div id="error-msg"></div>
+        <p style="color:#555; font-size:0.7rem; margin-top:30px;">
+            Requiere acceso a cámara.<br>El procesamiento se realiza en tu dispositivo.
+        </p>
     </div>
 
     <div id="ui-layer" style="display:none;">
-        <div id="status-bar">Cargando IA...</div>
+        <div id="status-bar">Iniciando sistema...</div>
     </div>
     
     <video id="videoSource" playsinline webkit-playsinline muted></video>
@@ -109,19 +119,18 @@
         import * as THREE from 'three';
         import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
-        // Variables Globales
+        // --- VARIABLES ---
         let renderer, scene, camera;
         let video, videoTexture, fontTexture;
         let customMaterial;
         let handLandmarker;
         let lastVideoTime = -1;
-        let animationId;
         
         let currentEffectValue = 0;
         let targetEffectValue = 0;
         let isHandDetected = false;
 
-        // Elementos del DOM
+        // Elementos DOM
         const startScreen = document.getElementById('start-screen');
         const uiLayer = document.getElementById('ui-layer');
         const btnStart = document.getElementById('btn-start');
@@ -129,25 +138,54 @@
         const errorMsg = document.getElementById('error-msg');
         const videoElement = document.getElementById('videoSource');
 
-        // --- Event Listener para el botón ---
+        // --- EVENTO START (DIAGNÓSTICO MEJORADO) ---
         btnStart.addEventListener('click', async () => {
-            btnStart.textContent = "CARGANDO...";
+            errorMsg.style.display = 'none';
+            btnStart.textContent = "SOLICITANDO PERMISOS...";
             btnStart.disabled = true;
-            
+
+            // 1. Chequeo de HTTPS (Crucial para móviles)
+            if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+                showError("⚠️ ERROR DE SEGURIDAD", "La cámara requiere HTTPS. Si estás usando una IP (192.168...), no funcionará. Usa localhost o sube a GitHub Pages.");
+                btnStart.textContent = "ERROR HTTPS";
+                return;
+            }
+
             try {
                 await init();
-                // Si todo va bien, ocultamos la pantalla de inicio
+                // Éxito
                 startScreen.style.display = 'none';
                 uiLayer.style.display = 'flex';
             } catch (e) {
-                console.error(e);
-                btnStart.textContent = "REINTENTAR";
+                console.error("Error completo:", e);
                 btnStart.disabled = false;
-                errorMsg.innerText = `Error: ${e.name} - ${e.message}`;
+                btnStart.textContent = "REINTENTAR";
+                
+                // Mensajes específicos para el usuario
+                let title = "ERROR TÉCNICO";
+                let desc = e.message;
+
+                if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+                    title = "🔒 ACCESO DENEGADO";
+                    desc = "El navegador bloqueó la cámara. Toca el icono 'AA' o el Candado 🔒 en la barra de dirección y selecciona 'Permitir'.";
+                } else if (e.name === 'NotFoundError') {
+                    title = "📷 CÁMARA NO DETECTADA";
+                    desc = "No se encuentra ninguna cámara disponible.";
+                } else if (e.name === 'NotReadableError') {
+                    title = "⚠️ CÁMARA OCUPADA";
+                    desc = "Otra app (Zoom/Instagram) está usando la cámara. Cierra todo y recarga.";
+                }
+
+                showError(title, desc);
             }
         });
 
-        // 1. Textura ASCII
+        function showError(title, desc) {
+            errorMsg.style.display = 'block';
+            errorMsg.innerHTML = `<b>${title}</b><br>${desc}`;
+        }
+
+        // --- 1. GENERAR LETRAS ASCII ---
         function createAsciiTexture() {
             const canvas = document.createElement('canvas');
             const chars = " .:-=+*#%@"; 
@@ -171,7 +209,7 @@
             return { texture, charCount };
         }
 
-        // 2. Shaders
+        // --- 2. SHADERS ---
         const vertexShader = `
             varying vec2 vUv;
             void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }
@@ -181,3 +219,153 @@
             uniform sampler2D tDiffuse;
             uniform sampler2D tFont;
             uniform float uInteraction;
+            uniform vec2 uResolution;
+            uniform float uCharCount;
+            varying vec2 vUv;
+            float getBrightness(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+            void main() {
+                vec2 uv = vUv;
+                vec4 originalColor = texture2D(tDiffuse, uv);
+                
+                // Configuración responsiva de densidad
+                float columns = uResolution.x / 10.0;
+                if (columns < 40.0) columns = 40.0; 
+
+                float ratio = uResolution.x / uResolution.y;
+                float rows = columns / ratio;
+                
+                vec2 gridUV = floor(uv * vec2(columns, rows)) / vec2(columns, rows);
+                vec3 pixelColor = texture2D(tDiffuse, gridUV).rgb;
+                float brightness = getBrightness(pixelColor);
+                float charIndex = floor(brightness * (uCharCount - 0.01));
+                
+                vec2 cellUV = fract(uv * vec2(columns, rows));
+                float fontUV_x = (cellUV.x + charIndex) / uCharCount;
+                vec2 fontUV = vec2(fontUV_x, cellUV.y);
+                
+                vec4 fontColor = texture2D(tFont, fontUV);
+                vec3 asciiColor = fontColor.r * pixelColor * 1.5;
+                
+                gl_FragColor = vec4(mix(originalColor.rgb, asciiColor, uInteraction), 1.0);
+            }
+        `;
+
+        // --- 3. INICIALIZACIÓN ---
+        async function init() {
+            // A. Solicitar Cámara (Configuración flexible)
+            const constraints = {
+                audio: false,
+                video: {
+                    facingMode: 'user',
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video = document.getElementById('videoSource');
+            video.srcObject = stream;
+            
+            await new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resolve();
+                };
+            });
+
+            // B. MediaPipe
+            statusBar.innerText = "Cargando Hand Tracking...";
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
+            );
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1
+            });
+
+            // C. Three.js
+            const asciiData = createAsciiTexture();
+            fontTexture = asciiData.texture;
+            setupThreeJS(asciiData.charCount);
+            
+            statusBar.innerText = "¡Listo! Junta tus dedos.";
+            animate();
+        }
+
+        function setupThreeJS(charCount) {
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+            videoTexture = new THREE.VideoTexture(video);
+            videoTexture.minFilter = THREE.LinearFilter;
+            videoTexture.colorSpace = THREE.SRGBColorSpace;
+
+            customMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: videoTexture },
+                    tFont: { value: fontTexture },
+                    uCharCount: { value: charCount },
+                    uInteraction: { value: 0.0 },
+                    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader
+            });
+
+            const plane = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), customMaterial);
+            scene.add(plane);
+
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                customMaterial.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (video && video.readyState >= 2 && handLandmarker) {
+                if (video.currentTime !== lastVideoTime) {
+                    lastVideoTime = video.currentTime;
+                    const results = handLandmarker.detectForVideo(video, performance.now());
+
+                    if (results.landmarks.length > 0) {
+                        isHandDetected = true;
+                        const lm = results.landmarks[0];
+                        // Distancia Euclidea Simple
+                        const d = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+                        
+                        // Mapping
+                        const minD = 0.03; 
+                        const maxD = 0.18;
+                        let val = 1.0 - Math.min(Math.max((d - minD) / (maxD - minD), 0.0), 1.0);
+                        
+                        targetEffectValue = val;
+                        statusBar.innerText = `INTENSIDAD: ${(val*100).toFixed(0)}%`;
+                        statusBar.style.color = "#0f0";
+                    } else {
+                        isHandDetected = false;
+                        statusBar.innerText = "MANO NO DETECTADA (LOCKED)";
+                        statusBar.style.color = "#ffaa00";
+                    }
+                }
+            }
+
+            // Lerp
+            currentEffectValue += (targetEffectValue - currentEffectValue) * 0.1;
+            if(customMaterial) customMaterial.uniforms.uInteraction.value = currentEffectValue;
+            
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
