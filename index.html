@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Webcam ASCII Mirror</title>
+    <title>Webcam ASCII Mirror - B&W</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #111;
+            background-color: #000; /* Fondo negro */
             display: flex;
             justify-content: center;
             align-items: center;
-            color: #0f0;
+            color: #fff; /* Texto blanco */
             font-family: 'Courier New', Courier, monospace;
             height: 100vh;
         }
@@ -45,12 +45,13 @@
             box-sizing: border-box;
         }
 
-        h1 { margin: 0 0 10px 0; font-size: 1.5rem; letter-spacing: 3px; }
+        h1 { margin: 0 0 10px 0; font-size: 1.5rem; letter-spacing: 3px; color: #fff; }
+        p { color: #aaa; }
         
         button {
             background: transparent;
-            border: 2px solid #0f0;
-            color: #0f0;
+            border: 2px solid #fff; /* Botón blanco */
+            color: #fff;
             padding: 15px 30px;
             font-family: inherit;
             font-size: 1.1rem;
@@ -59,7 +60,7 @@
             margin-top: 20px;
             text-transform: uppercase;
         }
-        button:hover { background: #0f0; color: #000; }
+        button:hover { background: #fff; color: #000; }
         button:disabled { border-color: #555; color: #555; pointer-events: none; }
 
         #error-msg {
@@ -71,12 +72,12 @@
             background: rgba(50,0,0,0.5);
             padding: 10px;
             border-radius: 5px;
-            display: none; /* Se muestra solo si hay error */
+            display: none;
         }
 
         #status-bar {
             margin-top: 20px;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.8);
             padding: 8px 15px;
             border-radius: 20px;
             font-size: 0.8rem;
@@ -89,13 +90,13 @@
 <body>
 
     <div id="start-screen">
-        <h1>ASCII MIRROR</h1>
-        <p style="color: #888; margin: 0;">TouchDesigner Web Port</p>
+        <h1>ASCII MIRROR B&W</h1>
+        <p style="margin: 0;">TouchDesigner Web Port</p>
         
         <button id="btn-start">ACTIVAR CÁMARA</button>
         
         <div id="error-msg"></div>
-        <p style="color:#555; font-size:0.7rem; margin-top:30px;">
+        <p style="font-size:0.7rem; margin-top:30px; opacity: 0.7;">
             Requiere acceso a cámara.<br>El procesamiento se realiza en tu dispositivo.
         </p>
     </div>
@@ -138,22 +139,20 @@
         const errorMsg = document.getElementById('error-msg');
         const videoElement = document.getElementById('videoSource');
 
-        // --- EVENTO START (DIAGNÓSTICO MEJORADO) ---
+        // --- EVENTO START ---
         btnStart.addEventListener('click', async () => {
             errorMsg.style.display = 'none';
             btnStart.textContent = "SOLICITANDO PERMISOS...";
             btnStart.disabled = true;
 
-            // 1. Chequeo de HTTPS (Crucial para móviles)
             if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-                showError("⚠️ ERROR DE SEGURIDAD", "La cámara requiere HTTPS. Si estás usando una IP (192.168...), no funcionará. Usa localhost o sube a GitHub Pages.");
+                showError("⚠️ ERROR DE SEGURIDAD", "La cámara requiere HTTPS. Usa localhost o sube a GitHub Pages.");
                 btnStart.textContent = "ERROR HTTPS";
                 return;
             }
 
             try {
                 await init();
-                // Éxito
                 startScreen.style.display = 'none';
                 uiLayer.style.display = 'flex';
             } catch (e) {
@@ -161,19 +160,18 @@
                 btnStart.disabled = false;
                 btnStart.textContent = "REINTENTAR";
                 
-                // Mensajes específicos para el usuario
                 let title = "ERROR TÉCNICO";
                 let desc = e.message;
 
                 if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
                     title = "🔒 ACCESO DENEGADO";
-                    desc = "El navegador bloqueó la cámara. Toca el icono 'AA' o el Candado 🔒 en la barra de dirección y selecciona 'Permitir'.";
+                    desc = "El navegador bloqueó la cámara. Revisa los permisos en la barra de dirección.";
                 } else if (e.name === 'NotFoundError') {
                     title = "📷 CÁMARA NO DETECTADA";
                     desc = "No se encuentra ninguna cámara disponible.";
                 } else if (e.name === 'NotReadableError') {
                     title = "⚠️ CÁMARA OCUPADA";
-                    desc = "Otra app (Zoom/Instagram) está usando la cámara. Cierra todo y recarga.";
+                    desc = "Otra app está usando la cámara. Cierra todo y recarga.";
                 }
 
                 showError(title, desc);
@@ -185,7 +183,7 @@
             errorMsg.innerHTML = `<b>${title}</b><br>${desc}`;
         }
 
-        // --- 1. GENERAR LETRAS ASCII ---
+        // --- 1. GENERAR LETRAS ASCII (Blanco sobre Negro) ---
         function createAsciiTexture() {
             const canvas = document.createElement('canvas');
             const chars = " .:-=+*#%@"; 
@@ -194,9 +192,11 @@
             canvas.width = fontSize * charCount; 
             canvas.height = fontSize;
             const ctx = canvas.getContext('2d');
+            // Fondo negro para la textura de fuente
             ctx.fillStyle = "#000000";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.font = `bold ${fontSize}px monospace`;
+            // Letras blancas para la textura de fuente
             ctx.fillStyle = "#ffffff";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
@@ -209,7 +209,7 @@
             return { texture, charCount };
         }
 
-        // --- 2. SHADERS ---
+        // --- 2. SHADERS (MODIFICADO PARA BLANCO Y NEGRO) ---
         const vertexShader = `
             varying vec2 vUv;
             void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }
@@ -222,7 +222,9 @@
             uniform vec2 uResolution;
             uniform float uCharCount;
             varying vec2 vUv;
+            
             float getBrightness(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+            
             void main() {
                 vec2 uv = vUv;
                 vec4 originalColor = texture2D(tDiffuse, uv);
@@ -230,29 +232,38 @@
                 // Configuración responsiva de densidad
                 float columns = uResolution.x / 10.0;
                 if (columns < 40.0) columns = 40.0; 
-
                 float ratio = uResolution.x / uResolution.y;
                 float rows = columns / ratio;
                 
+                // Pixelación y Brillo
                 vec2 gridUV = floor(uv * vec2(columns, rows)) / vec2(columns, rows);
                 vec3 pixelColor = texture2D(tDiffuse, gridUV).rgb;
                 float brightness = getBrightness(pixelColor);
-                float charIndex = floor(brightness * (uCharCount - 0.01));
                 
+                // Selección de letra
+                float charIndex = floor(brightness * (uCharCount - 0.01));
                 vec2 cellUV = fract(uv * vec2(columns, rows));
                 float fontUV_x = (cellUV.x + charIndex) / uCharCount;
                 vec2 fontUV = vec2(fontUV_x, cellUV.y);
                 
+                // Muestreo de la fuente (fontColor.r es 1.0 donde hay letra, 0.0 donde no)
                 vec4 fontColor = texture2D(tFont, fontUV);
-                vec3 asciiColor = fontColor.r * pixelColor * 1.5;
                 
+                // --- LÓGICA DE COLOR MODIFICADA ---
+                // Definimos blanco puro
+                vec3 whiteColor = vec3(1.0, 1.0, 1.0);
+                
+                // El color ASCII final es: La forma de la letra (fontColor.r) * Blanco * Brillo original.
+                // Multiplicamos por 2.0 para darle un poco más de "punch" al blanco.
+                vec3 asciiColor = fontColor.r * whiteColor * brightness * 2.0;
+                
+                // Cuando uInteraction es 1.0, el fondo es negro porque asciiColor es 0.0 donde no hay letra.
                 gl_FragColor = vec4(mix(originalColor.rgb, asciiColor, uInteraction), 1.0);
             }
         `;
 
         // --- 3. INICIALIZACIÓN ---
         async function init() {
-            // A. Solicitar Cámara (Configuración flexible)
             const constraints = {
                 audio: false,
                 video: {
@@ -273,7 +284,6 @@
                 };
             });
 
-            // B. MediaPipe
             statusBar.innerText = "Cargando Hand Tracking...";
             const vision = await FilesetResolver.forVisionTasks(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
@@ -287,7 +297,6 @@
                 numHands: 1
             });
 
-            // C. Three.js
             const asciiData = createAsciiTexture();
             fontTexture = asciiData.texture;
             setupThreeJS(asciiData.charCount);
@@ -341,26 +350,23 @@
                     if (results.landmarks.length > 0) {
                         isHandDetected = true;
                         const lm = results.landmarks[0];
-                        // Distancia Euclidea Simple
                         const d = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
                         
-                        // Mapping
                         const minD = 0.03; 
                         const maxD = 0.18;
                         let val = 1.0 - Math.min(Math.max((d - minD) / (maxD - minD), 0.0), 1.0);
                         
                         targetEffectValue = val;
                         statusBar.innerText = `INTENSIDAD: ${(val*100).toFixed(0)}%`;
-                        statusBar.style.color = "#0f0";
+                        statusBar.style.color = "#fff"; // Texto de estado blanco
                     } else {
                         isHandDetected = false;
                         statusBar.innerText = "MANO NO DETECTADA (LOCKED)";
-                        statusBar.style.color = "#ffaa00";
+                        statusBar.style.color = "#ccc";
                     }
                 }
             }
 
-            // Lerp
             currentEffectValue += (targetEffectValue - currentEffectValue) * 0.1;
             if(customMaterial) customMaterial.uniforms.uInteraction.value = currentEffectValue;
             
