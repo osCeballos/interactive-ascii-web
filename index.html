@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam ASCII Interaction</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        h1 { margin: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; }
+        p { font-size: 0.9rem; opacity: 0.8; background: rgba(0,0,0,0.7); padding: 5px; display: inline-block;}
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: white;
+            text-align: center;
+        }
+        #videoSource { display: none; }
+    </style>
+</head>
+<body>
+    <div id="loading">Inicializando Sistema...</div>
+    
+    <div id="ui-layer">
+        <h1>TouchDesigner Web Port</h1>
+        <p id="status">Esperando input...</p>
+    </div>
+    
+    <video id="videoSource" playsinline webkit-playsinline autoplay></video>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/+esm"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
+        let renderer, scene, camera;
+        let video, videoTexture, fontTexture;
+        let customMaterial;
+        let handLandmarker;
+        let lastVideoTime = -1;
+        
+        let currentEffectValue = 0;
+        let targetEffectValue = 0;
+        let isHandDetected = false;
+
+        const loadingElement = document.getElementById('loading');
+        const statusElement = document.getElementById('status');
+
+        function createAsciiTexture() {
+            const canvas = document.createElement('canvas');
+            const chars = " .:-=+*#%@"; 
+            const charCount = chars.length;
+            const fontSize = 64;
+            
+            canvas.width = fontSize * charCount; 
+            canvas.height = fontSize;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.font = `bold ${fontSize}px monospace`;
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            for (let i = 0; i < charCount; i++) {
+                const char = chars[i];
+                const x = i * fontSize + (fontSize / 2);
+                const y = fontSize / 2;
+                ctx.fillText(char, x, y);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.NearestFilter;
+            texture.magFilter = THREE.NearestFilter;
+            return { texture, charCount };
+        }
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            }
+        `;
+
+        const fragmentShader = `
+            uniform sampler2D tDiffuse;
+            uniform sampler2D tFont;
+            uniform float uInteraction;
+            uniform vec2 uResolution;
+            uniform float uCharCount;
+            varying vec2 vUv;
+
+            float getBrightness(vec3 color) {
+                return dot(color, vec3(0.299, 0.587, 0.114));
+            }
+
+            void main() {
+                vec2 uv = vUv;
+                vec4 originalColor = texture2D(tDiffuse, uv);
+
+                float columns = 80.0; 
+                float ratio = uResolution.x / uResolution.y;
+                float rows = columns / ratio;
+                
+                vec2 gridUV = floor(uv * vec2(columns, rows)) / vec2(columns, rows);
+                vec3 pixelColor = texture2D(tDiffuse, gridUV).rgb;
+                float brightness = getBrightness(pixelColor);
+
+                float charIndex = floor(brightness * (uCharCount - 0.01));
+                vec2 cellUV = fract(uv * vec2(columns, rows));
+                
+                float fontUV_x = (cellUV.x + charIndex) / uCharCount;
+                vec2 fontUV = vec2(fontUV_x, cellUV.y);
+                
+                vec4 fontColor = texture2D(tFont, fontUV);
+                vec3 asciiColor = fontColor.r * pixelColor * 1.5;
+
+                vec3 finalColor = mix(originalColor.rgb, asciiColor, uInteraction);
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        async function init() {
+            video = document.getElementById('videoSource');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480, facingMode: 'user' } 
+                });
+                video.srcObject = stream;
+                await video.play();
+            } catch (err) {
+                loadingElement.textContent = "Error de acceso a cámara.";
+                return;
+            }
+
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
+            );
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1
+            });
+            loadingElement.style.display = 'none';
+
+            const asciiData = createAsciiTexture();
+            fontTexture = asciiData.texture;
+            
+            setupThreeJS(asciiData.charCount);
+            animate();
+        }
+
+        function setupThreeJS(charCount) {
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+            videoTexture = new THREE.VideoTexture(video);
+            videoTexture.minFilter = THREE.LinearFilter;
+
+            customMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: videoTexture },
+                    tFont: { value: fontTexture },
+                    uCharCount: { value: charCount },
+                    uInteraction: { value: 0.0 },
+                    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                },
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader
+            });
+
+            const plane = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), customMaterial);
+            scene.add(plane);
+
+            window.addEventListener('resize', () => {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                customMaterial.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        async function animate() {
+            requestAnimationFrame(animate);
+
+            if (video.readyState >= 2 && handLandmarker) {
+                if (video.currentTime !== lastVideoTime) {
+                    lastVideoTime = video.currentTime;
+                    
+                    const results = handLandmarker.detectForVideo(video, performance.now());
+
+                    if (results.landmarks.length > 0) {
+                        isHandDetected = true;
+                        const landmarks = results.landmarks[0];
+                        const thumb = landmarks[4];
+                        const index = landmarks[8];
+
+                        const d = Math.sqrt(
+                            Math.pow(thumb.x - index.x, 2) + 
+                            Math.pow(thumb.y - index.y, 2)
+                        );
+
+                        const minD = 0.02; 
+                        const maxD = 0.15;
+                        
+                        let val = 1.0 - Math.min(Math.max((d - minD) / (maxD - minD), 0.0), 1.0);
+                        targetEffectValue = val;
+
+                        statusElement.innerText = `Control Activo | ${(val*100).toFixed(0)}%`;
+                        statusElement.style.color = "#0f0";
+                    } else {
+                        isHandDetected = false;
+                        statusElement.innerText = "Mano fuera (Lock)";
+                        statusElement.style.color = "#ffaa00";
+                    }
+                }
+            }
+
+            currentEffectValue += (targetEffectValue - currentEffectValue) * 0.1;
+
+            if(customMaterial) {
+                customMaterial.uniforms.uInteraction.value = currentEffectValue;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
