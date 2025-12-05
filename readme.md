@@ -1,29 +1,21 @@
-# Interactive Webcam ASCII Filter (Web Port)
+## 📜 Contexto y Evolución del Proyecto
 
-Este proyecto es una adaptación web (port) de una instalación interactiva diseñada originalmente por mí en **TouchDesigner**. 
+Este proyecto nace como una **evolución técnica** de una instalación interactiva creada originalmente en **TouchDesigner**. 
 
-El objetivo de este desarrollo fue trasladar la experiencia inmersiva del entorno de nodos a una web escalable, permitiendo que el filtro ASCII reaccione en tiempo real a la distancia de los dedos del usuario directamente en el navegador.
+El desafío principal consistió en desacoplar la lógica de nodos de un entorno de software propietario y traducirla a un ecosistema web abierto (**WebGL + JavaScript**). El resultado es una experiencia accesible desde el navegador que mantiene la fidelidad visual y la reactividad de la obra original, pero con la escalabilidad y distribución que ofrece la web moderna.
 
-## 🧠 Tecnologías Clave
+## 🤝 Créditos
 
-Este proyecto combina gráficos avanzados con visión por computadora en el cliente:
+### Concepto y Desarrollo
+* **Diseño Original & Dirección Creativa:** [Tu Nombre / Tu Portfolio] — Concepto inicial y lógica de interacción en TouchDesigner.
+* **Ingeniería Web (Port):** Desarrollado con una arquitectura moderna (ES6+, GLSL) enfocada en rendimiento.
+* **Asistencia Técnica (AI):** Código refactorizado y optimizado en colaboración con **Gemini (Google AI)**, utilizado para la traducción de lógica de nodos a shaders GLSL y estructuración de módulos JS.
 
-* **Google MediaPipe:** Utilizado para el *Hand Tracking* de alto rendimiento. Detecta los "landmarks" de la mano en tiempo real para calcular la distancia entre el pulgar y el índice sin necesidad de hardware externo (Kinect/Leap Motion).
-* **Three.js (WebGL):** Motor de renderizado 3D.
-* **GLSL (Shaders):** Lógica personalizada para la generación procedural de caracteres ASCII y gestión de texturas.
-* **JavaScript (ES6+):** Lógica de control y gestión de estado.
+### Stack Tecnológico y Recursos
+* **Visión por Computadora:** [MediaPipe Hands](https://developers.google.com/mediapipe) (Google) — Tracking de manos en el cliente.
+* **Renderizado 3D:** [Three.js](https://threejs.org/) — Gestión de escena y WebGL.
+* **Referencias TouchDesigner:** * Este proyecto se inspiró en flujos de trabajo de TD. Se agradece a [MediaPipe-TouchDesigner de Torinmb](https://github.com/torinmb/mediapipe-touchdesigner) como referencia clave para la integración original en el entorno de nodos.
 
-## ✨ Características de la Interacción
-
-1.  **Detección de Gestos con IA:** Gracias a **MediaPipe**, el sistema reconoce la mano del usuario instantáneamente.
-2.  **Transición Suavizada:** Un shader personalizado mezcla el video original con la representación ASCII basándose en la proximidad de los dedos (Gesto de "Pellizco").
-3.  **Persistencia de Estado (State Locking):** Si el usuario retira la mano del encuadre, el sistema "recuerda" el último valor del efecto, manteniendo el filtro activo sin resetearse bruscamente.
-
-
-## 📄 Créditos y Contexto
-
-**Concepto Original:** Diseñado en **TouchDesigner**.
-**Implementación Web:** Código generado y optimizado con la asistencia de **Gemini (Google AI)** para portar la lógica de nodos a WebGL/JS.
-**Mediapipe:**https://github.com/torinmb/mediapipe-touchdesigner 
 ---
-*Este proyecto es de código abierto para fines educativos y experimentales.*
+
+> **Nota Educativa:** Este repositorio es de **código abierto** (MIT License) con fines educativos y experimentales. Se invita a estudiar cómo la lógica de *visual programming* puede traducirse a *code-based programming*.
